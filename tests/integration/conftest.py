@@ -81,4 +81,4 @@ async def client(migrated_database: str) -> AsyncIterator[AsyncClient]:
         async with AsyncClient(transport=transport, base_url="http://test") as http:
             yield http
         async with application.state.engine.begin() as connection:
-            await connection.execute(text("TRUNCATE TABLE users"))
+            await connection.execute(text("TRUNCATE TABLE users CASCADE"))

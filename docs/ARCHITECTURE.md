@@ -2,7 +2,7 @@
 
 This is a modular monolith: one deployable Python process. HTTP routing, business rules, database access, and request validation are separate. There is no service mesh, no generic repository framework, and no background worker yet.
 
-Authentication and authorization are not implemented. The users module is a technical example so the layout, transactions, and tests have a real vertical slice. Do not treat it as an account system.
+Staff sign in with a server-side session. The users module stores a role and, for staff, a password hash. Patients have no password and cannot sign in. Do not deploy this service with real patient data until the production stage.
 
 ## Layout adjustments
 
@@ -57,13 +57,14 @@ Routers translate HTTP into service calls and translate entities into Pydantic s
 1. Uvicorn hands the request to the FastAPI app created by `create_app`.
 2. `AccessLogMiddleware` records method, path, status, and duration after the response starts. It does not read the body or the query string.
 3. The router in `app/modules/users/router.py` matches `/users` under the `/api/v1` prefix.
-4. Pydantic validates the body as `UserCreate`. Unknown fields are rejected. Whitespace is stripped. This is request validation, not the business rule.
-5. FastAPI resolves `get_user_service`, which depends on `get_db_session`. One `AsyncSession` is opened for the request.
-6. `UserService.create_user` strips and checks the display name, lowercases the email, and rejects a known duplicate.
-7. `UserRepository.add` flushes an `INSERT`. A unique-constraint failure becomes `ConflictError`.
-8. The router builds `UserRead` from the entity. The entity is not returned directly.
-9. If the route returns, the session dependency commits. If it raises, the dependency rolls back and `app/api/errors.py` writes the error envelope.
-10. The access log line is written.
+4. `get_actor` reads the bearer token, hashes it, and loads a live session. A missing or revoked token is 401. The raw token is not a column.
+5. Pydantic validates the body as `UserCreate`. Unknown fields are rejected. Display name and email are stripped. A password is not stripped. Patients cannot send a password. Staff must.
+6. FastAPI resolves `get_user_service`, which depends on `get_db_session`. One `AsyncSession` is opened for the request.
+7. `UserService.create_user` requires an admin actor, checks the display name, lowercases the email, hashes a staff password, and rejects a known duplicate. The audit row stores identifiers only.
+8. `UserRepository.add` flushes an `INSERT`. A unique-constraint failure becomes `ConflictError`.
+9. The router builds `UserRead` from the entity. The entity is not returned directly. `password_hash` is not a response field.
+10. If the route returns, the session dependency commits. If it raises, the dependency rolls back and `app/api/errors.py` writes the error envelope.
+11. The access log line is written.
 
 Health routes are registered on the application root, not on `api_router`. Probes should keep working when `/api/v1` changes. `/health/live` does not take a session. `/health/ready` borrows a connection from the engine and runs `SELECT 1`. Readiness means the server can reach Postgres. It does not mean the latest Alembic revision is applied.
 
@@ -109,6 +110,10 @@ The log formatter allows only `error_type`, `error_frames`, `http_method`, `path
 | Body or query fails Pydantic | 422 | `validation_error` |
 | Service rejects a value | 422 | `domain_validation_error` |
 | Duplicate email | 409 | `duplicate_email` |
+| Bootstrap after a staff account exists | 409 | `bootstrap_closed` |
+| Missing or invalid session | 401 | `authentication_required` |
+| Wrong email or password | 401 | `invalid_credentials` |
+| Authenticated role is not allowed | 403 | `forbidden` |
 | Unknown user id | 404 | `user_not_found` |
 | Unknown path | 404 | `route_not_found` |
 | Unhandled exception | 500 | `internal_error` |
@@ -117,7 +122,7 @@ Clients of the HTTP API normally see `validation_error` for bad input, because t
 
 ## Users
 
-`users` has `id`, `display_name`, `email`, `is_active`, `created_at`, and `updated_at`. `id` is a UUID generated in the service so the value exists before the insert. Emails are stored lowercase. The column itself is case-sensitive; the service normalizes first, and `uq_users_email` rejects a race that the lookup missed. Display names are stripped, must be non-blank, and are at most 120 characters. `is_active` defaults to true and can be set false. Inactive rows are still returned. There is no filter that hides them, because that would be a product rule this slice does not have.
+`users` has `id`, `display_name`, `email`, an optional `phone`, `role`, `password_hash`, `is_active`, `created_at`, and `updated_at`. `id` is a UUID generated in the service so the value exists before the insert. Emails are stored lowercase. The column itself is case-sensitive; the service normalizes first, and `uq_users_email` rejects a race that the lookup missed. Display names are stripped, must be at least 2 characters, and are at most 120 characters. `phone` is optional and is not unique: email remains the only identifier. A missing phone stays null. A provided phone is stored without spaces, hyphens, or parentheses, with 7 to 15 digits and an optional leading +. `role` is `patient`, `admin`, `doctor`, or `reception`. Rows created before this column existed are patients. A patient has a null `password_hash`. A staff password is stored as an Argon2 hash and is never returned. `is_active` defaults to true and can be set false on create. Inactive rows are still returned. There is no filter that hides them, because that would be a product rule this slice does not have.
 
 `updated_at` is maintained by the ORM (`onupdate`) plus a server default. There is no update route yet, and there is no database trigger. That is acceptable while this process is the only writer. A trigger belongs with the first feature that updates rows outside the ORM.
 
@@ -141,7 +146,7 @@ Do not import another feature module to share a helper. If two modules need the 
 - A frontend.
 - A base repository class or a unit-of-work framework. The session dependency is the unit of work.
 - Startup migrations. A crashed migration should not be hidden inside a rolling restart.
-- Authentication middleware. Adding a fake `get_current_user` that always succeeds would teach the wrong shape.
+- An authentication middleware that trusts a header without loading a session. `get_actor` hashes the bearer token and loads the session row. A dependency that always succeeds would still teach the wrong shape. OAuth and password reset are not implemented.
 
 A later worker should build `Settings`, call `create_db_engine`, open a session, and call a service. It should not call a route function. That is why services take plain values instead of Pydantic request models.
 

@@ -31,8 +31,8 @@ from app.db.session import create_db_engine, create_session_factory
 
 APP_DESCRIPTION = (
     "Dental Operations Intelligence backend foundation. "
-    "Authentication and authorization are not implemented. "
-    "Do not deploy this service with real patient or customer data."
+    "Staff sign in with a server-side session. Patients have no password and cannot sign in. "
+    "Do not deploy this service with real patient or customer data until production hardening."
 )
 
 access_logger = logging.getLogger("app.access")

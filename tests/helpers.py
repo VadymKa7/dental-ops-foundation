@@ -33,3 +33,27 @@ async def open_client(application: FastAPI) -> AsyncIterator[AsyncClient]:
         transport = ASGITransport(app=application)
         async with AsyncClient(transport=transport, base_url="http://test") as client:
             yield client
+
+
+def bearer(token: str) -> dict[str, str]:
+    return {"Authorization": f"Bearer {token}"}
+
+
+async def bootstrap_admin(client: AsyncClient, email: str = "admin@example.com") -> str:
+    response = await client.post(
+        "/api/v1/auth/bootstrap",
+        json={
+            "display_name": "Ada Admin",
+            "email": email,
+            "password": "password123",
+        },
+    )
+    assert response.status_code == 201, response.text
+    body = response.json()
+    assert body["token_type"] == "bearer"
+    assert body["user"]["role"] == "admin"
+    assert "password" not in body["user"]
+    assert "password123" not in response.text
+    token = body["access_token"]
+    assert isinstance(token, str)
+    return token

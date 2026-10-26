@@ -1,4 +1,5 @@
-"""User records for the technical vertical slice.
+"""User records.
 
-These endpoints are not authenticated. Do not treat them as an account system.
+Staff accounts have a password hash and a role. Patients are stored without
+a password and cannot sign in.
 """

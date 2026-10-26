@@ -120,6 +120,8 @@ Compare this with an Android `Application` class or a Flutter binding that start
 
 ## 6. Follow `POST /api/v1/users`
 
+This route now requires an administrator bearer token. Create the first administrator with `POST /api/v1/auth/bootstrap` while no staff account exists. The steps below are what happens after that check.
+
 Use this body:
 
 ```json
@@ -128,7 +130,7 @@ Use this body:
 
 **Routing.** `app/api/router.py` includes the users router. The route function is `create_user` in `app/modules/users/router.py`. The path is `/users`. The prefix `/api/v1` was added in `create_app`. The function returns `UserRead` and the status is 201.
 
-**Schema.** FastAPI builds a `UserCreate` before the function body runs. `extra="forbid"` rejects a `password` field. `str_strip_whitespace` turns the display name into `Ada Lovelace`. `EmailStr` checks the address and lowercases the domain, so the schema value is `Ada@example.com`. The service then lowercases the whole address to `ada@example.com` before it stores the row. A failure becomes `RequestValidationError`. `validation_exception_handler` in `app/api/errors.py` writes:
+**Schema.** FastAPI builds a `UserCreate` before the function body runs. `extra="forbid"` rejects an unknown field. A `password` is a real field for staff and is rejected for a patient. `str_strip_whitespace` turns the display name into `Ada Lovelace`. `EmailStr` checks the address and lowercases the domain, so the schema value is `Ada@example.com`. The service then lowercases the whole address to `ada@example.com` before it stores the row. A failure becomes `RequestValidationError`. `validation_exception_handler` in `app/api/errors.py` writes:
 
 ```json
 {"error": {"code": "validation_error", "message": "Request validation failed.", "details": []}}
@@ -136,7 +138,7 @@ Use this body:
 
 `details` contains location, message, and type. It does not copy the raw input back into a log. The HTTP response can still quote a value inside a Pydantic message because the client sent that value. The server log must not.
 
-**Dependency.** `create_user` asks for `service: Annotated[UserService, Depends(get_user_service)]`. FastAPI calls `get_user_service`. That function asks for a session via `Depends(get_db_session)`. So the order is: open a session, build `UserRepository(session)`, build `UserService(repository)`, call the route.
+**Dependency.** `create_user` asks for an actor from `get_actor` and for `service: Annotated[UserService, Depends(get_user_service)]`. FastAPI calls `get_user_service`. That function asks for a session via `Depends(get_db_session)`. So the order is: open a session, build `UserRepository(session)`, build `UserService(repository)`, call the route.
 
 This is dependency injection without a container. The graph is the parameter list. It is closer to passing dependencies into a constructor than to a global service locator. Hilt would generate a factory. Here the factory is `get_user_service`, and it is three lines because the graph is three lines.
 
@@ -214,7 +216,7 @@ When you add a log line, add a field to `_ALLOWED_EXTRA` only if that field cann
 - missing user
 - page size and offset checks
 
-`tests/unit/test_user_schema.py` covers the HTTP contract: strip, length, email shape, and a forbidden `password` field.
+`tests/unit/test_user_schema.py` covers the HTTP contract: strip, length, email shape, and the password rule for patients and staff.
 
 `tests/integration/` answers "does the HTTP stack persist rows in Postgres?" `tests/integration/conftest.py` reads `TEST_DATABASE_URL`, runs Alembic in a subprocess, and opens the app with `ASGITransport`. HTTPX talks to the app in-process. There is no need for the uvicorn port. After each test the fixture truncates `users`.
 

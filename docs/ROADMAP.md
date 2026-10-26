@@ -1,6 +1,6 @@
 # Roadmap
 
-None of these stages are implemented. The current code is the foundation they can sit on: one process, explicit modules, PostgreSQL migrations, and a Redis service that the API does not use yet.
+The users slice includes the stage 1 and stage 2 exercises, and stage 4 now has server-side sessions, roles, and identifier-only audit records. Appointments, the admin UI, workers, AI, external systems, video, and production hardening are not implemented. Redis is still unused by the API.
 
 ## 1. Python fundamentals and testing
 
@@ -8,7 +8,7 @@ Learn the language by reading and changing this codebase. Follow `docs/LEARNING_
 
 ## 2. Backend architecture and PostgreSQL
 
-This stage is the work already sketched by the layout: FastAPI, async SQLAlchemy, Alembic, and a real users slice. Deepen it by reading a request from `app/main.py` through commit, applying the initial migration yourself, and inspecting `users` in `psql`. The next practice step is a reviewed migration for a column you can justify, not a new bounded context.
+This stage is the work already sketched by the layout: FastAPI, async SQLAlchemy, Alembic, and a real users slice. Deepen it by reading a request from `app/main.py` through commit, applying the initial migration yourself, and inspecting `users` in `psql`. The reviewed migration is `0002_add_user_phone`: an optional phone, because email was the only stored contact. It is not a new module.
 
 ## 3. Appointments, scheduling rules, and waitlist
 
@@ -16,7 +16,7 @@ Add `app/modules/appointments/` as real Python only when the scheduling rules ar
 
 ## 4. Authentication, roles, and audit logging
 
-Replace the anonymous users example with an account model: credentials stored with a password hash, sessions or tokens, roles, and an audit trail for writes. Until this exists, the service must not be deployed with personal data. Authorization checks belong in services or dedicated dependencies, not in copied `if` statements across routers. Audit logging must follow the same rule as the current logger: no passwords, tokens, or raw personal data in the log line.
+Replace the anonymous users example with an account model: credentials stored with a password hash, sessions or tokens, roles, and an audit trail for writes. Until this exists, the service must not be deployed with personal data. Authorization checks belong in services or dedicated dependencies, not in copied `if` statements across routers. Audit logging must follow the same rule as the current logger: no passwords, tokens, or raw personal data in the log line. The current slice stores an Argon2 hash, the SHA-256 of a random session token, the roles `patient`, `admin`, `doctor`, and `reception`, and audit rows that contain only identifiers. `POST /api/v1/auth/bootstrap` creates the first administrator while no staff account exists. There is still no password reset, OAuth, or user update route.
 
 ## 5. Admin interface
 
