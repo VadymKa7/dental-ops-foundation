@@ -8,15 +8,23 @@ from app.main import APP_DESCRIPTION, app
 from tests.helpers import UNREACHABLE_DATABASE_URL, build_app, open_client
 
 
-def test_openapi_lists_health_and_users_and_states_auth_is_missing() -> None:
+def test_openapi_lists_health_users_auth_and_audit() -> None:
     schema = build_app().openapi()
     paths = set(schema["paths"])
     assert "/health/live" in paths
     assert "/health/ready" in paths
     assert "/api/v1/users" in paths
     assert "/api/v1/users/{user_id}" in paths
-    assert "Authentication and authorization are not implemented" in schema["info"]["description"]
+    assert "/api/v1/auth/bootstrap" in paths
+    assert "/api/v1/auth/login" in paths
+    assert "/api/v1/auth/logout" in paths
+    assert "/api/v1/audit" in paths
+    assert "server-side session" in schema["info"]["description"]
     assert schema["info"]["description"] == APP_DESCRIPTION
+    user_props = schema["components"]["schemas"]["UserRead"]["properties"]
+    assert "password" not in user_props
+    assert "password_hash" not in user_props
+    assert "role" in user_props
 
 
 def test_job_libraries_are_not_imported() -> None:

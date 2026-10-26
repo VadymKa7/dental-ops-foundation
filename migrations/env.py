@@ -16,6 +16,8 @@ from sqlalchemy.ext.asyncio import create_async_engine
 
 from app.core.config import get_settings
 from app.db.base import Base
+from app.modules.audit.models import AuditEvent
+from app.modules.auth.models import AuthSession
 from app.modules.users.models import User
 
 if context.config.config_file_name is not None:
@@ -23,8 +25,9 @@ if context.config.config_file_name is not None:
 
 target_metadata = Base.metadata
 
-if User.__tablename__ not in target_metadata.tables:
-    raise RuntimeError("User model was not registered on SQLAlchemy metadata.")
+for model in (User, AuthSession, AuditEvent):
+    if model.__tablename__ not in target_metadata.tables:
+        raise RuntimeError(f"{model.__tablename__} was not registered on SQLAlchemy metadata.")
 
 
 def _database_url() -> str:

@@ -38,6 +38,7 @@ class Settings(BaseSettings):
     database_connect_timeout_seconds: float = Field(default=5.0, gt=0, le=60)
     # Present so a future worker can share this configuration. The API does not open Redis.
     redis_url: str = "redis://localhost:6379/0"
+    session_ttl_minutes: int = Field(default=480, gt=0, le=60 * 24 * 14)
 
     @field_validator("database_url")
     @classmethod

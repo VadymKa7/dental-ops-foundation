@@ -6,6 +6,7 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.modules.users.models import User
+from app.modules.users.roles import STAFF_ROLES
 
 
 class UserRepository:
@@ -37,4 +38,9 @@ class UserRepository:
 
     async def count(self) -> int:
         result = await self._session.scalar(select(func.count()).select_from(User))
+        return int(result or 0)
+
+    async def count_staff(self) -> int:
+        statement = select(func.count()).select_from(User).where(User.role.in_(STAFF_ROLES))
+        result = await self._session.scalar(statement)
         return int(result or 0)

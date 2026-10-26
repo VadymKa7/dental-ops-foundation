@@ -2,7 +2,7 @@
 
 Learning and portfolio backend for a dental operations product. This repository is the foundation: a single FastAPI process, PostgreSQL, one users example, tests, and a local Docker Compose stack.
 
-**Authentication and authorization are not implemented.** The user endpoints are a technical example. They do not store passwords and they do not check who is calling. Do not deploy this service with real patient, customer, or staff data until authentication, authorization, and the production items in `docs/ROADMAP.md` exist.
+**Staff authentication is a server-side session.** Patients are stored without a password and cannot sign in. The first administrator is created with `POST /api/v1/auth/bootstrap` while no staff account exists. Do not deploy this service with real patient or customer data until the production items in `docs/ROADMAP.md` exist.
 
 Appointments, document extraction, AI providers, and video processing are described in module READMEs and the roadmap. They are not implemented. Redis runs in Compose for a future worker. The API process does not connect to it. Celery is not installed.
 
@@ -44,7 +44,7 @@ Alembic is the schema tool. The application does **not** run migrations on start
 uv run alembic upgrade head
 ```
 
-That applies `migrations/versions/0001_create_users.py` using `DATABASE_URL` from the environment or `.env`.
+That applies every revision in `migrations/versions/` using `DATABASE_URL` from the environment or `.env`.
 
 Other commands:
 
@@ -85,19 +85,22 @@ Health routes are unversioned, at the process root, so probes do not depend on t
 
 Business routes live under `/api/v1`:
 
+- `POST /api/v1/auth/bootstrap`
+- `POST /api/v1/auth/login`
+- `POST /api/v1/auth/logout`
 - `POST /api/v1/users`
 - `GET /api/v1/users`
 - `GET /api/v1/users/{user_id}`
+- `GET /api/v1/audit`
 
 Interactive docs: [http://127.0.0.1:8000/docs](http://127.0.0.1:8000/docs)
 
 ```bash
 curl http://127.0.0.1:8000/health/live
 curl http://127.0.0.1:8000/health/ready
-curl -X POST http://127.0.0.1:8000/api/v1/users \
+curl -X POST http://127.0.0.1:8000/api/v1/auth/bootstrap \
   -H 'content-type: application/json' \
-  -d '{"display_name":"Ada Lovelace","email":"ada@example.com"}'
-curl http://127.0.0.1:8000/api/v1/users
+  -d '{"display_name":"Ada Admin","email":"ada.admin@example.com","password":"password123"}'
 ```
 
 Emails are stored lowercase. A duplicate email, including a different case, returns 409. An unknown user returns 404. Invalid JSON bodies return 422. Error JSON looks like:
@@ -106,7 +109,7 @@ Emails are stored lowercase. A duplicate email, including a different case, retu
 {"error": {"code": "user_not_found", "message": "User not found.", "details": null}}
 ```
 
-These routes are not authenticated.
+Health routes stay public. User and audit routes require `Authorization: Bearer <token>`. Swagger's Authorize box wants the raw token.
 
 ## Tests
 
@@ -123,7 +126,7 @@ export TEST_DATABASE_URL=postgresql+asyncpg://dental:dental@localhost:5432/denta
 uv run pytest
 ```
 
-The integration fixture runs `alembic upgrade head` against that database and truncates `users` after each test. Set `REQUIRE_INTEGRATION=1` when a missing URL should fail the run instead of skipping, which is what a future CI job should do.
+The integration fixture runs `alembic upgrade head` against that database and truncates `users` and the tables that reference it after each test. Set `REQUIRE_INTEGRATION=1` when a missing URL should fail the run instead of skipping, which is what a future CI job should do.
 
 ```bash
 REQUIRE_INTEGRATION=1 TEST_DATABASE_URL=postgresql+asyncpg://dental:dental@localhost:5432/dental_test uv run pytest
@@ -148,7 +151,7 @@ uv run mypy
 
 ## Layout
 
-`docs/ARCHITECTURE.md` describes module boundaries, the request and session lifecycle, and how to add a module. `docs/LEARNING_GUIDE.md` walks the same code for someone learning Python backends. `docs/ROADMAP.md` lists later stages. None of those stages are implemented here.
+`docs/ARCHITECTURE.md` describes module boundaries, the request and session lifecycle, and how to add a module. `docs/LEARNING_GUIDE.md` walks the same code for someone learning Python backends. `docs/ROADMAP.md` lists later stages. Appointments and everything after the account slice are not implemented here.
 
 ## Local configuration
 
@@ -161,5 +164,6 @@ uv run mypy
 | `LOG_LEVEL` | `DEBUG`, `INFO`, `WARNING`, `ERROR`, or `CRITICAL`. |
 | `API_PREFIX` | Prefix for business routes. Default `/api/v1`. |
 | `DATABASE_CONNECT_TIMEOUT_SECONDS` | Connection timeout passed to asyncpg. |
+| `SESSION_TTL_MINUTES` | Lifetime of a staff session. Default 480. The raw token is not stored. |
 
 Logs are JSON. The formatter writes a fixed set of fields and drops exception text, so a database error does not copy a URL or a row into the log line.
